@@ -13,15 +13,14 @@ function getDB() {
 $pdo = getDB();
 
 // HTTP-авторизация
-if (!isset($_SERVER['PHP_AUTH_USER']) || !isset($_SERVER['PHP_AUTH_PW'])) {
-    header('WWW-Authenticate: Basic realm="Админ-панель Задание 6"');
-    header('HTTP/1.0 401 Unauthorized');
-    echo '<div class="container"><h1 style="text-align:center;">Доступ запрещён</h1><p>Введите логин и пароль администратора.</p></div>';
-    exit;
+session_start();
+if (!isset($_SESSION['admin_logged_in'])) {
+    header('Location: admin_login.php');
+    exit();
 }
 
-$auth_login = $_SERVER['PHP_AUTH_USER'];
-$auth_pass  = $_SERVER['PHP_AUTH_PW'];
+$auth_login = $_SESSION['admin_logged_in'];
+$auth_pass = ''; // Пароль нам больше не нужен, проверка прошла через форму
 
 $stmt = $pdo->prepare("SELECT password_hash FROM admin WHERE login = ?");
 $stmt->execute([$auth_login]);
