@@ -1,26 +1,36 @@
 <?php
 header('Content-Type: text/html; charset=UTF-8');
 
+// === ПОДКЛЮЧЕНИЕ К БД ===
 function getDB() {
     static $pdo = null;
     if ($pdo === null) {
-        $pdo = new PDO("mysql:host=localhost;dbname=u82460;charset=utf8mb4", 'u82460', '1450175');
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db_host = 'localhost';
+        $db_user = 'u82460';
+        $db_pass = '1450175';
+        $db_name = 'u82460';
+        try {
+            $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass);
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch (PDOException $e) {
+            die("Ошибка подключения к БД: " . $e->getMessage());
+        }
     }
     return $pdo;
 }
 
 $pdo = getDB();
 
-// HTTP-авторизация
-session_start();
-if (!isset($_SESSION['admin_logged_in'])) {
-    header('Location: admin_login.php');
-    exit();
+// === HTTP-АВТОРИЗАЦИЯ (как у друга) ===
+if (!isset($_SERVER['PHP_AUTH_USER']) || !isset($_SERVER['PHP_AUTH_PW'])) {
+    header('WWW-Authenticate: Basic realm="Админ-панель Задание 6"');
+    header('HTTP/1.0 401 Unauthorized');
+    echo '<div class="container"><h1 style="text-align:center;">Доступ запрещён</h1><p>Введите логин и пароль администратора.</p></div>';
+    exit;
 }
 
-$auth_login = $_SESSION['admin_logged_in'];
-$auth_pass = ''; // Пароль нам больше не нужен, проверка прошла через форму
+$auth_login = $_SERVER['PHP_AUTH_USER'];
+$auth_pass  = $_SERVER['PHP_AUTH_PW'];
 
 $stmt = $pdo->prepare("SELECT password_hash FROM admin WHERE login = ?");
 $stmt->execute([$auth_login]);
@@ -33,7 +43,7 @@ if (!$admin_row || !password_verify($auth_pass, $admin_row['password_hash'])) {
     exit;
 }
 
-// Обработка действий
+// === ОБРАБОТКА ДЕЙСТВИЙ АДМИНА ===
 $messages = [];
 $edit_errors = [];
 $edit_id = 0;
@@ -54,7 +64,12 @@ if (isset($_GET['edit'])) {
     $stmt->execute([$edit_id]);
     $edit_values = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($edit_values) {
-        $lang_stmt = $pdo->prepare("SELECT l.name FROM application_language al JOIN language l ON al.language_id = l.id WHERE al.application_id = ?");
+        $lang_stmt = $pdo->prepare("
+            SELECT l.name 
+            FROM application_language al 
+            JOIN language l ON al.language_id = l.id 
+            WHERE al.application_id = ?
+        ");
         $lang_stmt->execute([$edit_id]);
         $edit_values['languages'] = [];
         while ($l = $lang_stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -153,12 +168,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id'])) {
 
 // Загрузка всех анкет
 $applications = [];
-$stmt = $pdo->query("SELECT a.*, GROUP_CONCAT(l.name SEPARATOR ', ') AS languages_list FROM application a LEFT JOIN application_language al ON a.id = al.application_id LEFT JOIN language l ON al.language_id = l.id GROUP BY a.id ORDER BY a.id DESC");
+$stmt = $pdo->query("
+    SELECT a.*, GROUP_CONCAT(l.name SEPARATOR ', ') AS languages_list
+    FROM application a
+    LEFT JOIN application_language al ON a.id = al.application_id
+    LEFT JOIN language l ON al.language_id = l.id
+    GROUP BY a.id
+    ORDER BY a.id DESC
+");
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) $applications[] = $row;
 
 // Статистика
 $stats = [];
-$stmt = $pdo->query("SELECT l.name, COUNT(DISTINCT al.application_id) AS count FROM language l LEFT JOIN application_language al ON l.id = al.language_id GROUP BY l.id, l.name ORDER BY count DESC, l.name");
+$stmt = $pdo->query("
+    SELECT l.name, COUNT(DISTINCT al.application_id) AS count
+    FROM language l
+    LEFT JOIN application_language al ON l.id = al.language_id
+    GROUP BY l.id, l.name
+    ORDER BY count DESC, l.name
+");
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) $stats[] = $row;
 
 $all_languages = $pdo->query("SELECT name FROM language ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
